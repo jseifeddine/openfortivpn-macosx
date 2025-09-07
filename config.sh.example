@@ -1,0 +1,73 @@
+#!/bin/bash
+# openfortivpn-macosx Configuration File
+# This file contains all configuration settings for the openfortivpn-macosx scripts
+# 
+
+CONFIG_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+# ============================================================================
+# VPN Server Configuration
+# ============================================================================
+VPN_SERVER="vpn.internal.local"
+VPN_PORT="12345"
+
+# ============================================================================
+# DNS Configuration
+# ============================================================================
+# Search domains to add/remove when VPN connects/disconnects
+SEARCH_DOMAINS=(
+    "internal.local"
+    "private.domain"
+)
+
+# ============================================================================
+# File Paths
+# ============================================================================
+# Process and state files
+PID_FILE="/var/run/openfortivpn-macosx.pid"
+
+# Log files
+LOG_FILE="/var/log/openfortivpn-macosx.log"
+
+# Data files
+ROUTES_FILE="/var/run/openfortivpn-macosx.routes"
+
+# ============================================================================
+# OpenFortiVPN Configuration
+# ============================================================================
+# Path to openfortivpn binary
+OPENFORTIVPN_BIN="$(which openfortivpn || echo /opt/homebrew/bin/openfortivpn)"
+
+# OpenFortiVPN command line options
+OPENFORTIVPN_OPTIONS=(
+    "--saml-login -vvvv"         # Use SAML authentication and verbose logging to capture XML routes
+    "--set-dns=0"                # Don't let openfortivpn set DNS
+    "--set-routes=0"             # Don't let openfortivpn set routes
+    "--pppd-accept-remote=0"     # Don't accept remote IP
+    "--pppd-no-peerdns"          # Don't use peer DNS
+    # THIS IS BROKEN ON MAC ?? "--persistent=10"            # Reconnect after 10 seconds on disconnect
+)
+
+# ============================================================================
+# SAML Authentication
+# ============================================================================
+# User to run the browser as (for SAML authentication)
+BROWSER_USER="$(sudo stat -f "%Su" ~/)"
+
+# Timeout for waiting for SAML URL (seconds)
+SAML_TIMEOUT=10
+
+# ============================================================================
+# PPP Scripts Configuration
+# ============================================================================
+# Minimum number of routes required in XML to consider it valid
+MIN_ROUTES_THRESHOLD=5
+
+# ============================================================================
+# Debug Options
+# ============================================================================
+# Enable debug logging
+DEBUG_ENABLED=false
+
+# Keep temporary files after disconnect
+KEEP_TEMP_FILES=false

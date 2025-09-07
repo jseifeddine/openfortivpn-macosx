@@ -1,0 +1,4 @@
+jseifeddine ALL= NOPASSWD: /usr/local/bin/openfortivpn-macosx
+jseifeddine ALL= NOPASSWD: /usr/sbin/networksetup
+jseifeddine ALL= NOPASSWD: /usr/bin/dscacheutil
+jseifeddine ALL= NOPASSWD: /usr/bin/killall

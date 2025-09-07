@@ -1,0 +1,45 @@
+#!/bin/bash
+# openfortivpn-macosx PPP IP-DOWN Script
+# Called when PPP connection is terminated
+
+# Source common functions
+source "/usr/local/lib/openfortivpn-macosx/functions.sh"
+
+# Load configuration
+load_config
+
+# PPP parameters passed by pppd
+INTERFACE="$1"
+TTY="$2"
+SPEED="$3"
+LOCAL_IP="$4"
+REMOTE_IP="$5"
+SESSION_ID="$6" # This is the pppd-ipparam we passed to openfortivpn
+
+# Log script execution
+log_ppp "IP-DOWN" "========================================"
+log_ppp "IP-DOWN" "Script started"
+log_ppp "IP-DOWN" "Session ID: $SESSION_ID"
+log_ppp "IP-DOWN" "Interface: $INTERFACE going down"
+log_ppp "IP-DOWN" "Local IP was: $LOCAL_IP"
+log_ppp "IP-DOWN" "Remote IP was: $REMOTE_IP"
+
+# Remove DNS search domains
+modify_search_domains "remove"
+
+# Flush DNS cache
+flush_dns_cache
+
+# Clean up routes file if not keeping temp files
+if [[ "$KEEP_TEMP_FILES" != "true" && -f "$ROUTES_FILE" ]]; then
+    log_debug "Removing routes file: $ROUTES_FILE"
+    rm -f "$ROUTES_FILE"
+fi
+
+# Mark session end if we have a session ID
+if [[ -n "$SESSION_ID" ]]; then
+    mark_session_end "$SESSION_ID"
+fi
+
+log_ppp "IP-DOWN" "Script completed"
+log_ppp "IP-DOWN" "========================================"

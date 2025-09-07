@@ -1,0 +1,129 @@
+#!/bin/bash
+# openfortivpn-macosx PPP IP-UP Script
+# Called when PPP connection is established
+
+# Source common functions
+source "/usr/local/lib/openfortivpn-macosx/functions.sh"
+
+# Load configuration
+load_config
+
+# PPP parameters passed by pppd
+INTERFACE="$1"
+TTY="$2"
+SPEED="$3"
+LOCAL_IP="$4"
+REMOTE_IP="$5"
+SESSION_ID="$6" # This is the pppd-ipparam we passed to openfortivpn
+
+# Log script execution
+log_ppp "IP-UP" "========================================"
+log_ppp "IP-UP" "Script started"
+log_ppp "IP-UP" "Session ID: $SESSION_ID"
+log_ppp "IP-UP" "Interface: $INTERFACE"
+log_ppp "IP-UP" "Local IP: $LOCAL_IP"
+log_ppp "IP-UP" "Remote IP: $REMOTE_IP"
+
+# Remove default route ONLY on ppp interface using ifscope
+remove_ppp_default_route "$INTERFACE"
+
+# Extract and process VPN routes
+XML_CONFIG=$(extract_routes_from_xml "$SESSION_ID")
+
+if [[ -n "$XML_CONFIG" ]]; then
+    log_ppp "IP-UP" "Parsing and adding routes from XML..."
+    
+    # Count routes
+    route_count=$(echo "$XML_CONFIG" | grep -o '<addr ip=' | wc -l | tr -d ' ')
+    log_ppp "IP-UP" "Processing $route_count routes from XML"
+    
+    # Start JSON routes file
+    cat > "$ROUTES_FILE" << EOF
+{
+  "session_id": "$SESSION_ID",
+  "timestamp": "$(date -Iseconds)",
+  "interface": "$INTERFACE",
+  "local_ip": "$LOCAL_IP",
+  "remote_ip": "$REMOTE_IP",
+  "routes": [
+EOF
+    
+    # Parse routes and add them
+    ROUTES_ADDED=0
+    
+    # Handle both single and double quotes in XML
+    ROUTE_PATTERN="<addr ip='[^']*' mask='[^']*'"
+    ROUTE_MATCHES=$(echo "$XML_CONFIG" | grep -o "$ROUTE_PATTERN")
+    
+    # If no matches with single quotes, try double quotes
+    if [[ -z "$ROUTE_MATCHES" ]]; then
+        ROUTE_PATTERN='<addr ip="[^"]*" mask="[^"]*"'
+        ROUTE_MATCHES=$(echo "$XML_CONFIG" | grep -o "$ROUTE_PATTERN")
+    fi
+    
+    # Process each route match
+    while IFS= read -r route_match; do
+        if [[ -n "$route_match" ]]; then
+            # Extract IP and mask (handle both quote types)
+            IP=$(echo "$route_match" | sed -n "s/.*ip=['\"]\\([^'\"]*\\)['\"].*/\\1/p")
+            MASK=$(echo "$route_match" | sed -n "s/.*mask=['\"]\\([^'\"]*\\)['\"].*/\\1/p")
+            
+            if [[ -n "$IP" && -n "$MASK" ]]; then
+                # Add comma if not first route
+                if [[ $ROUTES_ADDED -gt 0 ]]; then
+                    echo "," >> "$ROUTES_FILE"
+                fi
+                
+                # Get CIDR notation
+                CIDR=$(mask_to_cidr "$MASK")
+                
+                # Add to JSON
+                echo -n "    {\"ip\": \"$IP\", \"mask\": \"$MASK\", \"cidr\": \"$CIDR\"}" >> "$ROUTES_FILE"
+                
+                # Add the actual route
+                add_route "$IP" "$MASK" "$INTERFACE"
+                
+                ROUTES_ADDED=$((ROUTES_ADDED + 1))
+            fi
+        fi
+    done <<< "$ROUTE_MATCHES"
+    
+    # Complete JSON file
+    cat >> "$ROUTES_FILE" << EOF
+
+  ],
+  "xml_source": "$(echo "$XML_CONFIG" | sed 's/"/\\"/g' | tr -d '\n')"
+}
+EOF
+    
+    log_ppp "IP-UP" "Added $ROUTES_ADDED routes, saved to $ROUTES_FILE"
+    
+else
+    log_ppp "IP-UP" "No XML configuration with sufficient routes found"
+    
+    # Try to restore from saved routes file
+    if [[ -f "$ROUTES_FILE" ]]; then
+        log_ppp "IP-UP" "Restoring routes from $ROUTES_FILE"
+        
+        # Parse JSON and restore routes
+        grep '"ip":' "$ROUTES_FILE" | while read -r line; do
+            IP=$(echo "$line" | sed -n 's/.*"ip": "\([^"]*\)".*/\1/p')
+            MASK=$(echo "$line" | sed -n 's/.*"mask": "\([^"]*\)".*/\1/p')
+            
+            if [[ -n "$IP" && -n "$MASK" ]]; then
+                add_route "$IP" "$MASK" "$INTERFACE"
+            fi
+        done
+    else
+        log_ppp "IP-UP" "No saved routes file found"
+    fi
+fi
+
+# Add DNS search domains
+modify_search_domains "add"
+
+# Flush DNS cache
+flush_dns_cache
+
+log_ppp "IP-UP" "Script completed"
+log_ppp "IP-UP" "========================================"
